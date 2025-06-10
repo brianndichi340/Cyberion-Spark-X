@@ -20,7 +20,7 @@ const config = {
   
   REJECT_CALL: process.env.REJECT_CALL !== undefined ? process.env.REJECT_CALL === 'false' : true, 
   ANTI_WORD: process.env.ANTI_WORD !== undefined ? process.env.ANTI_WORD === 'false' : true,
-  ANTI_DELETE: process.env.ANTI_DELETE !== undefined ? process.env.ANTI_DELETE === 'false' : true,
+  ANTI_DELETE: process.env.ANTI_DELETE !== undefined ? process.env.ANTI_DELETE === 'false' : false,
   MODE: process.env.MODE || "privste",
   OWNER_NAME: process.env.OWNER_NAME || "BRIAN BOYER 🔥",
   OWNER_NUMBER: process.env.OWNER_NUMBER || "254717276195",
