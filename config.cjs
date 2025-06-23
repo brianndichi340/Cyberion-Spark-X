@@ -15,17 +15,17 @@ const config = {
   ALWAYS_ONLINE: process.env.ALWAYS_ONLINE !== undefined ? process.env.ALWAYS_ONLINE === 'true' : false,
   AUTO_REACT: process.env.AUTO_REACT !== undefined ? process.env.AUTO_REACT === 'true' : false,
    /*auto block only for 212 */
-  AUTO_BLOCK: process.env.AUTO_BLOCK !== undefined ? process.env.AUTO_BLOCK === 'false' : true,
+  AUTO_BLOCK: process.env.AUTO_BLOCK !== undefined ? process.env.AUTO_BLOCK === 'false' : false,
   
   
-  REJECT_CALL: process.env.REJECT_CALL !== undefined ? process.env.REJECT_CALL === 'false' : true, 
+  REJECT_CALL: process.env.REJECT_CALL !== undefined ? process.env.REJECT_CALL === 'false' : false, 
   ANTI_WORD: process.env.ANTI_WORD !== undefined ? process.env.ANTI_WORD === 'false' : true,
   ANTI_DELETE: process.env.ANTI_DELETE !== undefined ? process.env.ANTI_DELETE === 'false' : false,
-  MODE: process.env.MODE || "privste",
+  MODE: process.env.MODE || "private",
   OWNER_NAME: process.env.OWNER_NAME || "BRIAN BOYER 🔥",
   OWNER_NUMBER: process.env.OWNER_NUMBER || "254717276195",
   GEMINI_KEY: process.env.GEMINI_KEY || "AIzaSyCUPaxfIdZawsKZKqCqJcC-GWiQPCXKTDc",
-  WELCOME: process.env.WELCOME !== undefined ? process.env.WELCOME === 'fslse' : false, 
+  WELCOME: process.env.WELCOME !== undefined ? process.env.WELCOME === 'false' : false, 
 };
 
 
