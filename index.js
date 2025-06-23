@@ -1068026,6 +1068026,7 @@
 
 
 
+
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -1068289,136 +1068290,204 @@ https://shorturl.at/pWIkL
             }
         });
 
-        // --- Enhanced Auto Like Status (Status Reaction) ---
-        Matrix.ev.on('messages.upsert', async (chatUpdate) => {
+// --- Enhanced Auto Like Status (Status Reaction) ---
+Matrix.ev.on('messages.upsert', async (chatUpdate) => {
+    try {
+        // Debug log
+        console.log('Received message upsert event');
+        
+        if (!(config.AUTO_STATUS_REACT === true || config.AUTO_STATUS_REACT === "true")) {
+            console.log('Auto reaction disabled in config');
+            return;
+        }
+        
+        const messages = chatUpdate.messages;
+        if (!messages || messages.length === 0) {
+            console.log('No messages in update');
+            return;
+        }
+        
+        const mek = messages[0];
+        if (!mek.message) {
+            console.log('Message content missing');
+            return;
+        }
+        
+        console.log('Processing message from:', mek.key.remoteJid);
+        
+        const contentType = getContentType(mek.message);
+        const message = (contentType === 'ephemeralMessage') 
+            ? mek.message.ephemeralMessage.message 
+            : mek.message;
+        
+        // Enhanced status check
+        if (mek.key.remoteJid === 'status@broadcast' && !mek.key.fromMe) {
+            console.log('Detected status update to react to');
+            
+            const emojiList = [
+                '🦖', '💸', '💨', '🫮', '🐕‍🦺', '💯', '🔥', '💫', '💎', '⚡', '🩵', '🖤',
+                '👀', '🙌', '🙆', '🚩', '💻', '🤖', '😎', '🌰', '🍕', '🥤', '🍔', '🍟'
+            ];
+            const randomEmoji = emojiList[Math.floor(Math.random() * emojiList.length)];
+            
+            console.log(`Attempting to react with: ${randomEmoji}`);
+            
             try {
-                if (!(config.AUTO_STATUS_REACT === true || config.AUTO_STATUS_REACT === "true")) return;
-                const messages = chatUpdate.messages;
-                if (!messages || messages.length === 0) return;
-                const mek = messages[0];
-                if (!mek.message) return;
-                const contentType = getContentType(mek.message);
-                const message = (contentType === 'ephemeralMessage')
-                    ? mek.message.ephemeralMessage.message
-                    : mek.message;
-                if (mek.key.remoteJid === 'status@broadcast') {
-                    const emojiList = [
-                        '🦖', '💸', '💨', '🫮', '🐕‍🦺', '💯', '🔥', '💫', '💎', '⚡', '🩵', '🖤',
-                        '👀', '🙌', '🙆', '🚩', '💻', '🤖', '😎', '🌰', '🍕', '🥤', '🍔', '🍟'
-                    ];
-                    const randomEmoji = emojiList[Math.floor(Math.random() * emojiList.length)];
-                    await Matrix.sendMessage(mek.key.remoteJid, {
-                        react: {
-                            text: randomEmoji,
-                            key: mek.key,
-                        }
-                    });
-                    console.log(`Auto-reacted to a status with: ${randomEmoji}`);
-                }
-            } catch (err) {
-                console.error("Auto Like Status Error:", err);
-            }
-        });
-
-     // ... [previous code remains unchanged above this point]
-
-    // --- START ANTI-DELETE HANDLER ---
-    Matrix.ev.on("messages.upsert", async (m) => {
-        if (!(config.ANTI_DELETE === true || config.ANTI_DELETE === "true")) return;
-        const { messages } = m;
-        const ms = messages[0];
-        if (!ms.message) return;
-
-        const messageKey = ms.key;
-        const remoteJid = messageKey.remoteJid;
-        if (remoteJid === "status@broadcast") return;
-
-        // Save the received message to storage
-        store.addMessage(ms);
-
-        // Handle deleted messages
-        if (ms.message.protocolMessage && ms.message.protocolMessage.type === 0) {
-            const deletedKey = ms.message.protocolMessage.key;
-            const chatMessages = store.chats[remoteJid];
-            const deletedMessage = chatMessages?.find(
-                (msg) => msg.key.id === deletedKey.id
-            );
-            if (deletedMessage) {
-                try {
-                    const participant = deletedMessage.key.participant || deletedMessage.key.remoteJid;
-                    const originalSender = deletedMessage.key.fromMe
-                        ? Matrix.user.id
-                        : (deletedMessage.key.participant || deletedMessage.key.remoteJid);
-                    const messageType = Object.keys(deletedMessage.message)[0] || "Unknown Type";
-                    const chatType = remoteJid.endsWith('@g.us') ? 'Group' : 'Private Chat';
-                    const originalTimestamp = deletedMessage.messageTimestamp
-                        ? moment(deletedMessage.messageTimestamp * 1000).tz("Africa/Nairobi").format('YYYY-MM-DD HH:mm:ss')
-                        : "Unknown";
-                    const deletedAt = moment().tz("Africa/Nairobi").format('YYYY-MM-DD HH:mm:ss');
-
-                    const notification =
-                        `*🟢 Buddy-XTR antidelete*\n` +
-                        `━━━━━━━━━━━━━━━━━━━━━━\n` +
-                        `*🚨 Deleted by:* @${participant.split("@")[0]}\n` +
-                        `*👤 Original sender:* @${originalSender.split("@")[0]}\n` +
-                        `*💬 Message type:* ${messageType}\n` +
-                        `*👥 Chat type:* ${chatType}\n` +
-                        `*🕰️ Sent at:* ${originalTimestamp}\n` +
-                        `*🗑️ Deleted at:* ${deletedAt}\n` +
-                        `━━━━━━━━━━━━━━━━━━━━━━`;
-
-                    const botOwnerJid = `${config.OWNER_NUMBER}@s.whatsapp.net`;
-
-                    // Send to group/private chat and owner
-                    const targets = [remoteJid];
-                    if (botOwnerJid !== remoteJid) targets.push(botOwnerJid);
-
-                    for (const target of targets) {
-                        if (deletedMessage.message.conversation) {
-                            await Matrix.sendMessage(target, {
-                                text: `${notification}\n\n*Recovered message:*\n${deletedMessage.message.conversation}`,
-                                mentions: [participant, originalSender],
-                            });
-                        } else if (deletedMessage.message.imageMessage) {
-                            const caption = deletedMessage.message.imageMessage.caption || '';
-                            const buffer = await downloadMedia(Matrix, { imageMessage: deletedMessage.message.imageMessage });
-                            await Matrix.sendMessage(target, {
-                                image: buffer,
-                                caption: `${notification}\n\n*Recovered image caption:*\n${caption}`,
-                                mentions: [participant, originalSender],
-                            });
-                        } else if (deletedMessage.message.videoMessage) {
-                            const caption = deletedMessage.message.videoMessage.caption || '';
-                            const buffer = await downloadMedia(Matrix, { videoMessage: deletedMessage.message.videoMessage });
-                            await Matrix.sendMessage(target, {
-                                video: buffer,
-                                caption: `${notification}\n\n*Recovered video caption:*\n${caption}`,
-                                mentions: [participant, originalSender],
-                            });
-                        } else if (deletedMessage.message.audioMessage) {
-                            const buffer = await downloadMedia(Matrix, { audioMessage: deletedMessage.message.audioMessage });
-                            await Matrix.sendMessage(target, {
-                                audio: buffer,
-                                ptt: true,
-                                caption: notification,
-                                mentions: [participant, originalSender],
-                            });
-                        } else if (deletedMessage.message.stickerMessage) {
-                            const buffer = await downloadMedia(Matrix, { stickerMessage: deletedMessage.message.stickerMessage });
-                            await Matrix.sendMessage(target, {
-                                sticker: buffer,
-                                caption: notification,
-                                mentions: [participant, originalSender],
-                            });
-                        }
+                const reaction = {
+                    react: {
+                        text: randomEmoji,
+                        key: mek.key,
                     }
-                } catch (error) {
-                    console.error('Error handling deleted message:', error);
+                };
+                
+                console.log('Sending reaction payload:', reaction);
+                
+                // Add delay to ensure status is fully loaded
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                // Send reaction with additional options
+                await Matrix.sendMessage(mek.key.remoteJid, reaction, {
+                    messageId: mek.key.id,
+                    participant: mek.key.participant || undefined
+                });
+                
+                console.log(`Successfully reacted to status with: ${randomEmoji}`);
+                
+                // Additional verification
+                setTimeout(async () => {
+                    try {
+                        const checkReaction = await Matrix.fetchMessages(mek.key.remoteJid, {
+                            limit: 1,
+                            before: mek.key.id
+                        });
+                        console.log('Reaction verification:', checkReaction);
+                    } catch (verifyErr) {
+                        console.error('Verification failed:', verifyErr);
+                    }
+                }, 2000);
+                
+            } catch (reactErr) {
+                console.error('Reaction failed:', reactErr);
+                console.error('Reaction error details:', {
+                    remoteJid: mek.key.remoteJid,
+                    messageId: mek.key.id,
+                    participant: mek.key.participant
+                });
+                
+                // Retry once after failure
+                try {
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    await Matrix.sendMessage(mek.key.remoteJid, reaction);
+                    console.log('Retry succeeded after initial failure');
+                } catch (retryErr) {
+                    console.error('Retry also failed:', retryErr);
                 }
+            }
+        } else {
+            console.log('Not a status update or is our own message');
+        }
+    } catch (err) {
+        console.error("Auto Like Status Error:", err);
+        console.error('Error context:', {
+            message: messages?.[0]?.key,
+            errorStack: err.stack
+        });
+    }
+});
+//END OF STATUS REACTION
+    // --- START ANTI-DELETE HANDLER ---
+Matrix.ev.on("messages.upsert", async (m) => {
+    if (!(config.ANTI_DELETE === true || config.ANTI_DELETE === "true")) return;
+    const { messages } = m;
+    const ms = messages[0];
+    if (!ms.message) return;
+
+    const messageKey = ms.key;
+    const remoteJid = messageKey.remoteJid;
+    if (remoteJid === "status@broadcast") return;
+
+    // Save the received message to storage
+    store.addMessage(ms);
+
+    // Handle deleted messages
+    if (ms.message.protocolMessage && ms.message.protocolMessage.type === 0) {
+        const deletedKey = ms.message.protocolMessage.key;
+        const chatMessages = store.chats[remoteJid];
+        const deletedMessage = chatMessages?.find(
+            (msg) => msg.key.id === deletedKey.id
+        );
+        if (deletedMessage) {
+            try {
+                const participant = deletedMessage.key.participant || deletedMessage.key.remoteJid;
+                const originalSender = deletedMessage.key.fromMe
+                    ? Matrix.user.id
+                    : (deletedMessage.key.participant || deletedMessage.key.remoteJid);
+                const messageType = Object.keys(deletedMessage.message)[0] || "Unknown Type";
+                const chatType = remoteJid.endsWith('@g.us') ? 'Group' : 'Private Chat';
+                const originalTimestamp = deletedMessage.messageTimestamp
+                    ? moment(deletedMessage.messageTimestamp * 1000).tz("Africa/Nairobi").format('YYYY-MM-DD HH:mm:ss')
+                    : "Unknown";
+                const deletedAt = moment().tz("Africa/Nairobi").format('YYYY-MM-DD HH:mm:ss');
+
+                const notification =
+                    `*🟢 Buddy-XTR antidelete*\n` +
+                    `━━━━━━━━━━━━━━━━━━━━━━\n` +
+                    `*🚨 Deleted by:* @${participant.split("@")[0]}\n` +
+                    `*👤 Original sender:* @${originalSender.split("@")[0]}\n` +
+                    `*💬 Message type:* ${messageType}\n` +
+                    `*👥 Chat type:* ${chatType}\n` +
+                    `*📌 Chat ID:* ${remoteJid}\n` +
+                    `*🕰️ Sent at:* ${originalTimestamp}\n` +
+                    `*🗑️ Deleted at:* ${deletedAt}\n` +
+                    `━━━━━━━━━━━━━━━━━━━━━━`;
+
+                const botOwnerJid = `${config.OWNER_NUMBER}@s.whatsapp.net`;
+
+                // Only send to bot owner's PM
+                if (deletedMessage.message.conversation) {
+                    await Matrix.sendMessage(botOwnerJid, {
+                        text: `${notification}\n\n*Recovered message:*\n${deletedMessage.message.conversation}`,
+                        mentions: [participant, originalSender],
+                    });
+                } else if (deletedMessage.message.imageMessage) {
+                    const caption = deletedMessage.message.imageMessage.caption || '';
+                    const buffer = await downloadMedia(Matrix, { imageMessage: deletedMessage.message.imageMessage });
+                    await Matrix.sendMessage(botOwnerJid, {
+                        image: buffer,
+                        caption: `${notification}\n\n*Recovered image caption:*\n${caption}`,
+                        mentions: [participant, originalSender],
+                    });
+                } else if (deletedMessage.message.videoMessage) {
+                    const caption = deletedMessage.message.videoMessage.caption || '';
+                    const buffer = await downloadMedia(Matrix, { videoMessage: deletedMessage.message.videoMessage });
+                    await Matrix.sendMessage(botOwnerJid, {
+                        video: buffer,
+                        caption: `${notification}\n\n*Recovered video caption:*\n${caption}`,
+                        mentions: [participant, originalSender],
+                    });
+                } else if (deletedMessage.message.audioMessage) {
+                    const buffer = await downloadMedia(Matrix, { audioMessage: deletedMessage.message.audioMessage });
+                    await Matrix.sendMessage(botOwnerJid, {
+                        audio: buffer,
+                        ptt: true,
+                        caption: notification,
+                        mentions: [participant, originalSender],
+                    });
+                } else if (deletedMessage.message.stickerMessage) {
+                    const buffer = await downloadMedia(Matrix, { stickerMessage: deletedMessage.message.stickerMessage });
+                    await Matrix.sendMessage(botOwnerJid, {
+                        sticker: buffer,
+                        caption: notification,
+                        mentions: [participant, originalSender],
+                    });
+                }
+            } catch (error) {
+                console.error('Error handling deleted message:', error);
             }
         }
-    });
-    // --- END ANTI-DELETE HANDLER ---
+    }
+});
+// --- END ANTI-DELETE HANDLER ---
 
         // --- VIEW STATUS HANDLER (NEW) ---
         // Automatically mark status as read/viewed

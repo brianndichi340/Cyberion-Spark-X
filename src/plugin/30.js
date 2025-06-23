@@ -1068026,86 +1068026,84 @@
 
 
 
-import pkg from '@whiskeysockets/baileys';
+import axios from 'axios';
 import config from '../../config.cjs';
-import fs from 'fs';
-import path from 'path';
-const { generateWAMessageFromContent, proto } = pkg;
 
-const validCommands = ['alive', 'runtime', 'uptime'];
-
-const alive = async (m, Matrix) => {
+const githubStalk = async (m, gss) => {
   try {
-    const prefix = config.PREFIX || '!'; // Fallback prefix if not in config
-    const text = m.body || m.message?.conversation || m.message?.extendedTextMessage?.text || '';
-    
-    // Check if message starts with prefix and is a valid command
-    if (!text.startsWith(prefix)) return;
-    
-    const command = text.slice(prefix.length).trim().split(' ')[0].toLowerCase();
-    if (!validCommands.includes(command)) return;
+    const prefix = config.PREFIX;
+const cmd = m.body.startsWith(prefix) ? m.body.slice(prefix.length).split(' ')[0].toLowerCase() : '';
+const text = m.body.slice(prefix.length + cmd.length).trim();
+    const args = text.split(' ');
 
-    // Calculate uptime
-    const uptimeSeconds = process.uptime();
-    const days = Math.floor(uptimeSeconds / (24 * 3600));
-    const hours = Math.floor((uptimeSeconds % (24 * 3600)) / 3600);
-    const minutes = Math.floor((uptimeSeconds % 3600) / 60);
-    const seconds = Math.floor(uptimeSeconds % 60);
+    const validCommands = ['githubstalk', 'ghstalk'];
 
-    // Create the response message
-    const responseText = `╭────┈┈━═──━┈⊷
-┇ *Reply to ${prefix}${command}*
-┇
-┇ 🟢 *Buddy is alive and running!*
-┇
-┇ 𝓤𝓟𝓣𝓘𝓜𝓔 𝓘𝓝𝓕𝓞
-┇ 🤖 *${days} Day${days !== 1 ? 's' : ''}*
-┇ 🚀 *${hours} Hour${hours !== 1 ? 's' : ''}*
-┇ 📡 *${minutes} Minute${minutes !== 1 ? 's' : ''}*
-┇ 📴 *${seconds} Second${seconds !== 1 ? 's' : ''}*
-╰─────┈━═──━┈⊷`;
+   if (validCommands.includes(cmd)) {
+      if (!args[0]) return m.reply('Mention a GitHub username to stalk.');
 
-    // Try to send image with caption
-    try {
-      const imagePath = path.join('Buddy', 'porn.jpg');
-      if (fs.existsSync(imagePath)) {
-        const imageMessage = {
-          image: { url: imagePath },
-          caption: responseText,
-          mentions: [m.sender],
-          contextInfo: {
-            mentionedJid: [m.sender],
-            stanzaId: m.key.id,
-            participant: m.sender,
-            quotedMessage: {
-              conversation: text
-            }
-          }
-        };
-        await Matrix.sendMessage(m.from, imageMessage, { quoted: m });
-      } else {
-        throw new Error('Image not found');
-      }
-    } catch (imageError) {
-      console.log('Image not found, sending text only');
-      // Fallback to text message if image fails
-      const message = {
-        text: `*[Image Not Found]*\n\n${responseText}\n\nCould not find the image at Buddy/porn.jpg`,
-        mentions: [m.sender],
-        contextInfo: {
-          mentionedJid: [m.sender],
-          stanzaId: m.key.id,
-          participant: m.sender,
-          quotedMessage: {
-            conversation: text
-          }
+      const username = args[0];
+
+      try {
+        // Fetch GitHub user data using Axios
+        const githubResponse = await axios.get(`https://api.github.com/users/${username}`);
+        const userData = githubResponse.data;
+
+        if (githubResponse.status !== 200) {
+          return m.reply(`❌ GitHub user not found.`);
         }
-      };
-      await Matrix.sendMessage(m.from, message, { quoted: m });
+
+        // Construct the response message
+        let responseMessage = `🌟 *GitHub Profile - @${userData.login}*\n\n`;
+        responseMessage += `  ◦  *Name*: ${userData.name || 'N/A'}\n`;
+        responseMessage += `  ◦  *Username*: @${userData.login}\n`;
+        responseMessage += `  ◦  *Bio*: ${userData.bio || 'N/A'}\n`;
+        responseMessage += `  ◦  *ID*: ${userData.id}\n`;
+        responseMessage += `  ◦  *Node ID*: ${userData.node_id}\n`;
+        responseMessage += `  ◦  *Profile URL*: ${userData.avatar_url}\n`;
+        responseMessage += `  ◦  *GitHub URL*: ${userData.html_url}\n`;
+        responseMessage += `  ◦  *Type*: ${userData.type}\n`;
+        responseMessage += `  ◦  *Admin*: ${userData.site_admin ? 'Yes' : 'No'}\n`;
+        responseMessage += `  ◦  *Company*: ${userData.company || 'N/A'}\n`;
+        responseMessage += `  ◦  *Blog*: ${userData.blog || 'N/A'}\n`;
+        responseMessage += `  ◦  *Location*: ${userData.location || 'N/A'}\n`;
+        responseMessage += `  ◦  *Email*: ${userData.email || 'N/A'}\n`;
+        responseMessage += `  ◦  *Public Repositories*: ${userData.public_repos}\n`;
+        responseMessage += `  ◦  *Public Gists*: ${userData.public_gists}\n`;
+        responseMessage += `  ◦  *Followers*: ${userData.followers}\n`;
+        responseMessage += `  ◦  *Following*: ${userData.following}\n`;
+        responseMessage += `  ◦  *Created At*: ${userData.created_at}\n`;
+        responseMessage += `  ◦  *Updated At*: ${userData.updated_at}\n`;
+
+        const githubReposResponse = await axios.get(`https://api.github.com/users/${username}/repos?per_page=5&sort=stargazers_count&direction=desc`);
+        const reposData = githubReposResponse.data;
+
+        if (reposData.length > 0) {
+          const topRepos = reposData.slice(0, 5); // Display the top 5 starred repositories
+
+          const reposList = topRepos.map(repo => {
+            return `  ◦  *Repository*: [${repo.name}](${repo.html_url})
+  ◦  *Description*: ${repo.description || 'N/A'}
+  ◦  *Stars*: ${repo.stargazers_count}
+  ◦  *Forks*: ${repo.forks}`;
+          });
+
+          const reposCaption = `📚 *Top Starred Repositories*\n\n${reposList.join('\n\n')}`;
+          responseMessage += `\n\n${reposCaption}`;
+        } else {
+          responseMessage += `\n\nNo public repositories found.`;
+        }
+
+        // Send the message with the updated caption and user's avatar
+        await gss.sendMessage(m.from, { image: { url: userData.avatar_url }, caption: responseMessage }, { quoted: m });
+      } catch (error) {
+        console.error('Error fetching GitHub data:', error);
+        await gss.sendMessage(m.from, 'An error occurred while fetching GitHub data.', { quoted: m });
+      }
     }
   } catch (error) {
-    console.error('Error in alive command:', error);
+    console.error('Error processing the command:', error);
+    m.reply('An error occurred while processing the command.');
   }
 };
 
-export default alive;
+export default githubStalk;
