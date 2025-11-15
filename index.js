@@ -1068053,6 +1068053,7 @@ import moment from 'moment-timezone';
 import axios from 'axios';
 import config from './config.cjs';
 import pkg from './lib/autoreact.cjs';
+import zlib from 'zlib';
 
 const { emojis, doReact } = pkg;
 const prefix = process.env.PREFIX || config.PREFIX;
@@ -1068170,41 +1068171,38 @@ async function downloadMedia(Matrix, message) {
     }
 }
 
-async function downloadSessionData() {
-    console.log("Debugging SESSION_ID:", config.SESSION_ID);
-
-    if (!config.SESSION_ID) {
-        console.error('Please add your session to SESSION_ID env !!');
-        return false;
-    }
-
-    const sessdata = config.SESSION_ID.split("Buddy;;;")[1];
-
-    if (!sessdata || !sessdata.includes("#")) {
-        console.error('Invalid SESSION_ID format! It must contain both file ID and decryption key.');
-        return false;
-    }
-
-    const [fileID, decryptKey] = sessdata.split("#");
-
+async function authentification() {
     try {
-        console.log("🔄 Syncing Session...");
-        const file = File.fromURL(`https://mega.nz/file/${fileID}#${decryptKey}`);
+        if (!fs.existsSync(credsPath)) {
+            console.log("Session connected...");
+            // Split the session string into header and Base64 data
+            const [header, b64data] = config.SESSION_ID.split(';;;'); 
 
-        const data = await new Promise((resolve, reject) => {
-            file.download((err, data) => {
-                if (err) reject(err);
-                else resolve(data);
-            });
-        });
+            // Validate the session format
+            if (header === "Buddy" && b64data) {
+                let compressedData = Buffer.from(b64data.replace('...', ''), 'base64'); // Decode and truncate
+                let decompressedData = zlib.gunzipSync(compressedData); // Decompress session
+                fs.writeFileSync(credsPath, decompressedData, "utf8"); // Save to file
+            } else {
+                throw new Error("Invalid session format");
+            }
+        } else if (fs.existsSync(credsPath) && config.SESSION_ID !== "zokk") {
+            console.log("Updating existing session...");
+            const [header, b64data] = config.SESSION_ID.split(';;;'); 
 
-        await fs.promises.writeFile(credsPath, data);
-        console.log("🧓 Session Successfully Loaded !!");
-        return true;
-    } catch (error) {
-        console.error('🦖 Failed to download session data:', error);
+            if (header === "Buddy" && b64data) {
+                let compressedData = Buffer.from(b64data.replace('...', ''), 'base64');
+                let decompressedData = zlib.gunzipSync(compressedData);
+                fs.writeFileSync(credsPath, decompressedData, "utf8");
+            } else {
+                throw new Error("Invalid session format");
+            }
+        }
+    } catch (e) {
+        console.log("Session Invalid: " + e.message);
         return false;
     }
+    return true;
 }
 
 async function start() {
@@ -1068237,7 +1068235,7 @@ async function start() {
                 }
             } else if (connection === 'open') {
                 if (initialConnection) {
-                    console.log(chalk.green("Buddy is now connected"));
+                    console.log(chalk.green("Buddy-XTR is now connected"));
                     Matrix.sendMessage(Matrix.user.id, {
                         image: { url: "https://files.catbox.moe/bxnzi0.jpg" },
                         caption: `
@@ -1068245,7 +1068243,7 @@ async function start() {
 │ Buddy-XTR
 ╰───────────⊷
 ╭───────────⊷
-│ 𝕳𝖆𝖛𝖊 𝖋𝖚𝖓; 𝕲𝖊𝖙 𝖘𝖚𝖕𝖕𝖔𝖗𝖙
+│ 𝕳𝖆𝖛𝖊 �𝖚𝖓; 𝕲𝖊𝖙 𝖘𝖚𝖕𝖕𝖔𝖗𝖙
 │ 𝕵𝖔𝖎𝖓; 𝕱𝖊𝖊𝖉𝖇𝖆𝖈𝖐
 │ 𝖈𝖔𝖒𝖒𝖆𝖓𝖉: ${prefix}
 ╰───────────⊷
@@ -1068290,204 +1068288,203 @@ https://shorturl.at/pWIkL
             }
         });
 
-// --- Enhanced Auto Like Status (Status Reaction) ---
-Matrix.ev.on('messages.upsert', async (chatUpdate) => {
-    try {
-        // Debug log
-        console.log('Received message upsert event');
-        
-        if (!(config.AUTO_STATUS_REACT === true || config.AUTO_STATUS_REACT === "true")) {
-            console.log('Auto reaction disabled in config');
-            return;
-        }
-        
-        const messages = chatUpdate.messages;
-        if (!messages || messages.length === 0) {
-            console.log('No messages in update');
-            return;
-        }
-        
-        const mek = messages[0];
-        if (!mek.message) {
-            console.log('Message content missing');
-            return;
-        }
-        
-        console.log('Processing message from:', mek.key.remoteJid);
-        
-        const contentType = getContentType(mek.message);
-        const message = (contentType === 'ephemeralMessage') 
-            ? mek.message.ephemeralMessage.message 
-            : mek.message;
-        
-        // Enhanced status check
-        if (mek.key.remoteJid === 'status@broadcast' && !mek.key.fromMe) {
-            console.log('Detected status update to react to');
-            
-            const emojiList = [
-                '🦖', '💸', '💨', '🫮', '🐕‍🦺', '💯', '🔥', '💫', '💎', '⚡', '🩵', '🖤',
-                '👀', '🙌', '🙆', '🚩', '💻', '🤖', '😎', '🌰', '🍕', '🥤', '🍔', '🍟'
-            ];
-            const randomEmoji = emojiList[Math.floor(Math.random() * emojiList.length)];
-            
-            console.log(`Attempting to react with: ${randomEmoji}`);
-            
+        // --- Enhanced Auto Like Status (Status Reaction) ---
+        Matrix.ev.on('messages.upsert', async (chatUpdate) => {
             try {
-                const reaction = {
-                    react: {
-                        text: randomEmoji,
-                        key: mek.key,
-                    }
-                };
+                // Debug log
+                console.log('Received message upsert event');
                 
-                console.log('Sending reaction payload:', reaction);
+                if (!(config.AUTO_STATUS_REACT === true || config.AUTO_STATUS_REACT === "true")) {
+                    console.log('Auto reaction disabled in config');
+                    return;
+                }
                 
-                // Add delay to ensure status is fully loaded
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                const messages = chatUpdate.messages;
+                if (!messages || messages.length === 0) {
+                    console.log('No messages in update');
+                    return;
+                }
                 
-                // Send reaction with additional options
-                await Matrix.sendMessage(mek.key.remoteJid, reaction, {
-                    messageId: mek.key.id,
-                    participant: mek.key.participant || undefined
-                });
+                const mek = messages[0];
+                if (!mek.message) {
+                    console.log('Message content missing');
+                    return;
+                }
                 
-                console.log(`Successfully reacted to status with: ${randomEmoji}`);
+                console.log('Processing message from:', mek.key.remoteJid);
                 
-                // Additional verification
-                setTimeout(async () => {
+                const contentType = getContentType(mek.message);
+                const message = (contentType === 'ephemeralMessage') 
+                    ? mek.message.ephemeralMessage.message 
+                    : mek.message;
+                
+                // Enhanced status check
+                if (mek.key.remoteJid === 'status@broadcast' && !mek.key.fromMe) {
+                    console.log('Detected status update to react to');
+                    
+                    const emojiList = [
+                        '🦖', '💸', '💨', '🫮', '🐕‍🦺', '💯', '🔥', '💫', '💎', '⚡', '🩵', '🖤',
+                        '👀', '🙌', '🙆', '🚩', '💻', '🤖', '😎', '🌰', '🍕', '🥤', '🍔', '🍟'
+                    ];
+                    const randomEmoji = emojiList[Math.floor(Math.random() * emojiList.length)];
+                    
+                    console.log(`Attempting to react with: ${randomEmoji}`);
+                    
                     try {
-                        const checkReaction = await Matrix.fetchMessages(mek.key.remoteJid, {
-                            limit: 1,
-                            before: mek.key.id
+                        const reaction = {
+                            react: {
+                                text: randomEmoji,
+                                key: mek.key,
+                            }
+                        };
+                        
+                        console.log('Sending reaction payload:', reaction);
+                        
+                        // Add delay to ensure status is fully loaded
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        
+                        // Send reaction with additional options
+                        await Matrix.sendMessage(mek.key.remoteJid, reaction, {
+                            messageId: mek.key.id,
+                            participant: mek.key.participant || undefined
                         });
-                        console.log('Reaction verification:', checkReaction);
-                    } catch (verifyErr) {
-                        console.error('Verification failed:', verifyErr);
+                        
+                        console.log(`Successfully reacted to status with: ${randomEmoji}`);
+                        
+                        // Additional verification
+                        setTimeout(async () => {
+                            try {
+                                const checkReaction = await Matrix.fetchMessages(mek.key.remoteJid, {
+                                    limit: 1,
+                                    before: mek.key.id
+                                });
+                                console.log('Reaction verification:', checkReaction);
+                            } catch (verifyErr) {
+                                console.error('Verification failed:', verifyErr);
+                            }
+                        }, 2000);
+                        
+                    } catch (reactErr) {
+                        console.error('Reaction failed:', reactErr);
+                        console.error('Reaction error details:', {
+                            remoteJid: mek.key.remoteJid,
+                            messageId: mek.key.id,
+                            participant: mek.key.participant
+                        });
+                        
+                        // Retry once after failure
+                        try {
+                            await new Promise(resolve => setTimeout(resolve, 1500));
+                            await Matrix.sendMessage(mek.key.remoteJid, reaction);
+                            console.log('Retry succeeded after initial failure');
+                        } catch (retryErr) {
+                            console.error('Retry also failed:', retryErr);
+                        }
                     }
-                }, 2000);
-                
-            } catch (reactErr) {
-                console.error('Reaction failed:', reactErr);
-                console.error('Reaction error details:', {
-                    remoteJid: mek.key.remoteJid,
-                    messageId: mek.key.id,
-                    participant: mek.key.participant
+                } else {
+                    console.log('Not a status update or is our own message');
+                }
+            } catch (err) {
+                console.error("Auto Like Status Error:", err);
+                console.error('Error context:', {
+                    message: messages?.[0]?.key,
+                    errorStack: err.stack
                 });
-                
-                // Retry once after failure
-                try {
-                    await new Promise(resolve => setTimeout(resolve, 1500));
-                    await Matrix.sendMessage(mek.key.remoteJid, reaction);
-                    console.log('Retry succeeded after initial failure');
-                } catch (retryErr) {
-                    console.error('Retry also failed:', retryErr);
-                }
             }
-        } else {
-            console.log('Not a status update or is our own message');
-        }
-    } catch (err) {
-        console.error("Auto Like Status Error:", err);
-        console.error('Error context:', {
-            message: messages?.[0]?.key,
-            errorStack: err.stack
         });
-    }
-});
-//END OF STATUS REACTION
-    // --- START ANTI-DELETE HANDLER ---
-Matrix.ev.on("messages.upsert", async (m) => {
-    if (!(config.ANTI_DELETE === true || config.ANTI_DELETE === "true")) return;
-    const { messages } = m;
-    const ms = messages[0];
-    if (!ms.message) return;
 
-    const messageKey = ms.key;
-    const remoteJid = messageKey.remoteJid;
-    if (remoteJid === "status@broadcast") return;
+        // --- START ANTI-DELETE HANDLER ---
+        Matrix.ev.on("messages.upsert", async (m) => {
+            if (!(config.ANTI_DELETE === true || config.ANTI_DELETE === "true")) return;
+            const { messages } = m;
+            const ms = messages[0];
+            if (!ms.message) return;
 
-    // Save the received message to storage
-    store.addMessage(ms);
+            const messageKey = ms.key;
+            const remoteJid = messageKey.remoteJid;
+            if (remoteJid === "status@broadcast") return;
 
-    // Handle deleted messages
-    if (ms.message.protocolMessage && ms.message.protocolMessage.type === 0) {
-        const deletedKey = ms.message.protocolMessage.key;
-        const chatMessages = store.chats[remoteJid];
-        const deletedMessage = chatMessages?.find(
-            (msg) => msg.key.id === deletedKey.id
-        );
-        if (deletedMessage) {
-            try {
-                const participant = deletedMessage.key.participant || deletedMessage.key.remoteJid;
-                const originalSender = deletedMessage.key.fromMe
-                    ? Matrix.user.id
-                    : (deletedMessage.key.participant || deletedMessage.key.remoteJid);
-                const messageType = Object.keys(deletedMessage.message)[0] || "Unknown Type";
-                const chatType = remoteJid.endsWith('@g.us') ? 'Group' : 'Private Chat';
-                const originalTimestamp = deletedMessage.messageTimestamp
-                    ? moment(deletedMessage.messageTimestamp * 1000).tz("Africa/Nairobi").format('YYYY-MM-DD HH:mm:ss')
-                    : "Unknown";
-                const deletedAt = moment().tz("Africa/Nairobi").format('YYYY-MM-DD HH:mm:ss');
+            // Save the received message to storage
+            store.addMessage(ms);
 
-                const notification =
-                    `*🟢 Buddy-XTR antidelete*\n` +
-                    `━━━━━━━━━━━━━━━━━━━━━━\n` +
-                    `*🚨 Deleted by:* @${participant.split("@")[0]}\n` +
-                    `*👤 Original sender:* @${originalSender.split("@")[0]}\n` +
-                    `*💬 Message type:* ${messageType}\n` +
-                    `*👥 Chat type:* ${chatType}\n` +
-                    `*📌 Chat ID:* ${remoteJid}\n` +
-                    `*🕰️ Sent at:* ${originalTimestamp}\n` +
-                    `*🗑️ Deleted at:* ${deletedAt}\n` +
-                    `━━━━━━━━━━━━━━━━━━━━━━`;
+            // Handle deleted messages
+            if (ms.message.protocolMessage && ms.message.protocolMessage.type === 0) {
+                const deletedKey = ms.message.protocolMessage.key;
+                const chatMessages = store.chats[remoteJid];
+                const deletedMessage = chatMessages?.find(
+                    (msg) => msg.key.id === deletedKey.id
+                );
+                if (deletedMessage) {
+                    try {
+                        const participant = deletedMessage.key.participant || deletedMessage.key.remoteJid;
+                        const originalSender = deletedMessage.key.fromMe
+                            ? Matrix.user.id
+                            : (deletedMessage.key.participant || deletedMessage.key.remoteJid);
+                        const messageType = Object.keys(deletedMessage.message)[0] || "Unknown Type";
+                        const chatType = remoteJid.endsWith('@g.us') ? 'Group' : 'Private Chat';
+                        const originalTimestamp = deletedMessage.messageTimestamp
+                            ? moment(deletedMessage.messageTimestamp * 1000).tz("Africa/Nairobi").format('YYYY-MM-DD HH:mm:ss')
+                            : "Unknown";
+                        const deletedAt = moment().tz("Africa/Nairobi").format('YYYY-MM-DD HH:mm:ss');
 
-                const botOwnerJid = `${config.OWNER_NUMBER}@s.whatsapp.net`;
+                        const notification =
+                            `*🟢 Buddy-XTR antidelete*\n` +
+                            `━━━━━━━━━━━━━━━━━━━━━━\n` +
+                            `*🚨 Deleted by:* @${participant.split("@")[0]}\n` +
+                            `*👤 Original sender:* @${originalSender.split("@")[0]}\n` +
+                            `*💬 Message type:* ${messageType}\n` +
+                            `*👥 Chat type:* ${chatType}\n` +
+                            `*📌 Chat ID:* ${remoteJid}\n` +
+                            `*🕰️ Sent at:* ${originalTimestamp}\n` +
+                            `*🗑️ Deleted at:* ${deletedAt}\n` +
+                            `━━━━━━━━━━━━━━━━━━━━━━`;
 
-                // Only send to bot owner's PM
-                if (deletedMessage.message.conversation) {
-                    await Matrix.sendMessage(botOwnerJid, {
-                        text: `${notification}\n\n*Recovered message:*\n${deletedMessage.message.conversation}`,
-                        mentions: [participant, originalSender],
-                    });
-                } else if (deletedMessage.message.imageMessage) {
-                    const caption = deletedMessage.message.imageMessage.caption || '';
-                    const buffer = await downloadMedia(Matrix, { imageMessage: deletedMessage.message.imageMessage });
-                    await Matrix.sendMessage(botOwnerJid, {
-                        image: buffer,
-                        caption: `${notification}\n\n*Recovered image caption:*\n${caption}`,
-                        mentions: [participant, originalSender],
-                    });
-                } else if (deletedMessage.message.videoMessage) {
-                    const caption = deletedMessage.message.videoMessage.caption || '';
-                    const buffer = await downloadMedia(Matrix, { videoMessage: deletedMessage.message.videoMessage });
-                    await Matrix.sendMessage(botOwnerJid, {
-                        video: buffer,
-                        caption: `${notification}\n\n*Recovered video caption:*\n${caption}`,
-                        mentions: [participant, originalSender],
-                    });
-                } else if (deletedMessage.message.audioMessage) {
-                    const buffer = await downloadMedia(Matrix, { audioMessage: deletedMessage.message.audioMessage });
-                    await Matrix.sendMessage(botOwnerJid, {
-                        audio: buffer,
-                        ptt: true,
-                        caption: notification,
-                        mentions: [participant, originalSender],
-                    });
-                } else if (deletedMessage.message.stickerMessage) {
-                    const buffer = await downloadMedia(Matrix, { stickerMessage: deletedMessage.message.stickerMessage });
-                    await Matrix.sendMessage(botOwnerJid, {
-                        sticker: buffer,
-                        caption: notification,
-                        mentions: [participant, originalSender],
-                    });
+                        const botOwnerJid = `${config.OWNER_NUMBER}@s.whatsapp.net`;
+
+                        // Only send to bot owner's PM
+                        if (deletedMessage.message.conversation) {
+                            await Matrix.sendMessage(botOwnerJid, {
+                                text: `${notification}\n\n*Recovered message:*\n${deletedMessage.message.conversation}`,
+                                mentions: [participant, originalSender],
+                            });
+                        } else if (deletedMessage.message.imageMessage) {
+                            const caption = deletedMessage.message.imageMessage.caption || '';
+                            const buffer = await downloadMedia(Matrix, { imageMessage: deletedMessage.message.imageMessage });
+                            await Matrix.sendMessage(botOwnerJid, {
+                                image: buffer,
+                                caption: `${notification}\n\n*Recovered image caption:*\n${caption}`,
+                                mentions: [participant, originalSender],
+                            });
+                        } else if (deletedMessage.message.videoMessage) {
+                            const caption = deletedMessage.message.videoMessage.caption || '';
+                            const buffer = await downloadMedia(Matrix, { videoMessage: deletedMessage.message.videoMessage });
+                            await Matrix.sendMessage(botOwnerJid, {
+                                video: buffer,
+                                caption: `${notification}\n\n*Recovered video caption:*\n${caption}`,
+                                mentions: [participant, originalSender],
+                            });
+                        } else if (deletedMessage.message.audioMessage) {
+                            const buffer = await downloadMedia(Matrix, { audioMessage: deletedMessage.message.audioMessage });
+                            await Matrix.sendMessage(botOwnerJid, {
+                                audio: buffer,
+                                ptt: true,
+                                caption: notification,
+                                mentions: [participant, originalSender],
+                            });
+                        } else if (deletedMessage.message.stickerMessage) {
+                            const buffer = await downloadMedia(Matrix, { stickerMessage: deletedMessage.message.stickerMessage });
+                            await Matrix.sendMessage(botOwnerJid, {
+                                sticker: buffer,
+                                caption: notification,
+                                mentions: [participant, originalSender],
+                            });
+                        }
+                    } catch (error) {
+                        console.error('Error handling deleted message:', error);
+                    }
                 }
-            } catch (error) {
-                console.error('Error handling deleted message:', error);
             }
-        }
-    }
-});
-// --- END ANTI-DELETE HANDLER ---
+        });
 
         // --- VIEW STATUS HANDLER (NEW) ---
         // Automatically mark status as read/viewed
@@ -1068504,7 +1068501,6 @@ Matrix.ev.on("messages.upsert", async (m) => {
                 console.error("Error marking status as viewed:", err);
             }
         });
-        // --- END VIEW STATUS HANDLER ---
 
     } catch (error) {
         console.error('Critical Error:', error);
@@ -1068517,7 +1068513,7 @@ async function init() {
         console.log("🔒 Session file found, proceeding without QR code.");
         await start();
     } else {
-        const sessionDownloaded = await downloadSessionData();
+        const sessionDownloaded = await authentification();
         if (sessionDownloaded) {
             console.log("🔒 Session downloaded, starting bot.");
             await start();
